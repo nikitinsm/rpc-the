@@ -1,6 +1,6 @@
 import unittest
 
-from rpc_the.pipes.base import Pipe, PipeLine
+from rpc_the.pipes.base import Pipe, PipeLine, PipeMessage
 
 
 class C1(Pipe):
@@ -11,10 +11,11 @@ class C1(Pipe):
         { 'do_raise': True
         , }
 
-    def handle(self, *args, **kwargs):
+    def handle(self, message):
         if self.settings.do_raise:
             raise TypeError('Error in 1')
-        return (args[0] + self.step, ), kwargs
+        message.i += self.step
+        return message
 
 
 class C2(Pipe):
@@ -25,46 +26,51 @@ class C2(Pipe):
         { 'do_raise': True
         , }
 
-    def handle(self, *args, **kwargs):
+    def handle(self, message):
         if self.settings.do_raise:
             raise ValueError('Error in 2')
-        return (args[0] + self.step, ), kwargs
+        message.i += self.step
+        return message
 
-    def handle_exception(self, exception, *args, **kwargs):
-        i = args[0]
+    def handle_exception(self, message):
         try:
-            raise exception
+            raise message.exception
         except TypeError:
-            i += (self.step ** 2)
-        args, kwargs = self.handle(i, **kwargs)
-        return None, args, kwargs
+            message.i += (self.step ** 2)
+        return message
 
 
 class C3(Pipe):
 
     step = 30
 
-    def handle(self, *args, **kwargs):
-        return (self.step + args[0], ), kwargs
+    def handle(self, message):
+        message.i += self.step
+        return message
 
-    def handle_exception(self, exception, *args, **kwargs):
-        i = args[0]
+    def handle_exception(self, message):
         try:
-            raise exception
+            raise message.exception
         except ValueError:
-            i += (self.step ** 2)
-        args, kwargs = self.handle(i, **kwargs)
-        return None, args, kwargs
+            message.i += (self.step ** 2)
+        message = self.handle(message)
+        return message
 
 
-class TestPipeTestCase(unittest.TestCase):
+class PipeTestCase(unittest.TestCase):
 
     def test_basic(self):
-        args, kwargs = PipeLine(C1(), C2(), C3())(1)
-        self.assertEqual((931, ), args)
+        message = PipeMessage()
+        message.i = 0
+        message = PipeLine(C1(), C2(), C3())(message)
+        self.assertEqual(message.i, 430)
 
-        args, kwargs = PipeLine(C1(do_raise=False), C2(), C3())(1)
-        self.assertEqual((932, ), args)
+        message = PipeMessage()
+        message.i = 0
+        message = PipeLine(C1(do_raise=False), C2(), C3())(message)
+        self.assertEqual(message.i, 931)
 
-        args, kwargs = PipeLine(C1(do_raise=False), C2(do_raise=False), C3())(1)
-        self.assertEqual((52, ), args)
+        message = PipeMessage()
+        message.i = 0
+        message = PipeLine(C1(do_raise=False), C2(do_raise=False), C3())(message)
+        self.assertEqual(message.i, 51)

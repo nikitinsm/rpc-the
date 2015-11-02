@@ -1,4 +1,6 @@
 import traceback
+
+from rpc_the.utils import ImmutableDict
 from rpc_the.utils import apply_settings, ImmutableSettings
 
 
@@ -10,19 +12,16 @@ class PipeLine(object):
                 raise ValueError('%s is not a "Pipe" object' % repr(handler))
         self._pipeline = pipeline
 
-    def __call__(self, *args, **kwargs):
-        exception = None
+    def __call__(self, message):
         for handler in self._pipeline:
             try:
-                if exception:
-                    exception, args, kwargs = handler.handle_exception(exception, *args, **kwargs)
-                    continue
-                args, kwargs = handler(*args, **kwargs)
+                message = handler(message)
             except Exception as exception:
-                print traceback.print_exc()
-                print type(exception), exception
+                message.exception = exception
+                # print traceback.print_exc()
+                # print type(exception), exception
                 continue
-        return args, kwargs
+        return message
 
 
 class Pipe(object):
@@ -38,18 +37,43 @@ class Pipe(object):
             )
         self.settings = ImmutableSettings(**settings)
 
-    def __call__(self, *args, **kwargs):
-        return self.handle(*args, **kwargs)
+    def __call__(self, message):
+        if issubclass(type(getattr(message, 'exception', None)), Exception):
+            result = self.handle_exception(message)
+            setattr(message, 'exception', None)
+            return result
+        return self.handle(message)
 
-    def handle_exception(self, exception, *args, **kwargs):
+    def handle(self, message):
+        raise NotImplementedError('BasePipe.handle must be implemented')
+
+    def handle_exception(self, message):
         """
         @param exception:
-        @param args:
-        @param kwargs:
-        @return: raise Exception or returns tuple (exception, args, kwargs)
+        @param message:
+        @raise Exception
+        @return: PipeMessage
         """
-        # Transfer control to next pipe by default
-        raise exception
+        # Transfer control to next pipe by PipeMessage
+        raise message.exception
 
-    def handle(self, *args, **kwargs):
-        raise NotImplementedError('BasePipe.handle must be implemented')
+
+class PipeMessage(object):
+    exception = None
+
+
+# class BaseAdapter(object):
+#
+#     required = None
+#     optional = None
+#
+#     def __init__(self, **kwargs):
+#         self.__dict__ = ImmutableDict(**kwargs)
+#
+#
+# class HttpRequestAdapter(BaseAdapter):
+#
+#     def __init__(self, method, header, body=None, path=None, args=None):
+#         kwargs = locals()
+#         kwargs.pop('self')
+#         super(HttpRequestAdapter, self).__init__(**kwargs)
